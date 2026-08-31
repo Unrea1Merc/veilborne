@@ -60,7 +60,7 @@ export function TitleScreen() {
         </div>
         <p className="mt-6 max-w-md text-xs leading-relaxed text-faint">
           Use GPS as your starting stone, then wander with the stick or WASD. Invite a friend with a
-          VB- code. Sign in with Google to pick up the same walker on another phone.
+          VB- code. Create an account to pick up the same walker on another phone.
         </p>
       </div>
     </main>
@@ -105,7 +105,7 @@ function AccountGate() {
       to="/login"
       className="flex min-h-11 items-center justify-center rounded-md bg-accent px-3.5 font-display text-sm tracking-wide text-accent-fg"
     >
-      Link Google · play on any phone
+      Create account · play on any phone
     </Link>
   );
 }
