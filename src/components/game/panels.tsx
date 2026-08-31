@@ -22,7 +22,7 @@ import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { forgetWalkerEverywhere } from "./cloud-sync";
 import { FriendsPanel } from "./friends";
-import { claimWalkerName, nameIsTaken } from "@/game/social";
+import { claimWalkerName, listFriends, nameIsTaken, type FriendRow } from "@/game/social";
 import { VAULT_PACKS, formatUsd, packGrantLine, type VaultPack } from "@/game/vault";
 import { buyVaultPack } from "@/game/vault-buy";
 import { shareBeta } from "@/game/share";
@@ -661,9 +661,12 @@ function InvitePanel() {
   const travelInvite = useGame((s) => s.travelInvite);
   const travelCity = useGame((s) => s.travelCity);
   const travelGuild = useGame((s) => s.travelGuild);
+  const travelFriend = useGame((s) => s.travelFriend);
+  const { user } = useCurrentUserState();
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [shareLabel, setShareLabel] = useState("Text the beta");
+  const [pals, setPals] = useState<FriendRow[]>([]);
   const mine = player ? getInvite() : "";
   const nearest = player ? nearestCity(player.lat, player.lng) : null;
   const bound = useMemo(() => {
@@ -676,6 +679,14 @@ function InvitePanel() {
       return true;
     });
   }, [player]);
+
+  useEffect(() => {
+    if (!user) return;
+    void listFriends()
+      .then((r) => setPals(r.friends.filter((f) => f.status === "accepted")))
+      .catch(() => setPals([]));
+  }, [user]);
+
   if (!player) return null;
   return (
     <div className="space-y-4">
@@ -736,6 +747,28 @@ function InvitePanel() {
           Fold to {player.guild.name} hall
         </SoftBtn>
       ) : null}
+      {pals.length ? (
+        <div className="space-y-1.5">
+          <p className="text-xs tracking-wide text-muted uppercase">Friends</p>
+          {pals.map((f) => (
+            <SoftBtn
+              key={f.otherId}
+              className="w-full"
+              disabled={f.lat == null || f.lng == null}
+              onClick={() => {
+                if (f.lat == null || f.lng == null) return;
+                travelFriend(f.lat, f.lng, f.name);
+              }}
+            >
+              {f.lat == null ? `${f.name} · no last shore` : `Fold to ${f.name}`}
+            </SoftBtn>
+          ))}
+        </div>
+      ) : user ? (
+        <p className="text-sm text-muted">Add a friend, then fold to their last shore from here.</p>
+      ) : (
+        <p className="text-sm text-muted">Sign in to fold to friends.</p>
+      )}
       {bound.length === 0 ? (
         <p className="text-sm text-muted">Walk into a town to bind its stone. Then you can fold back anytime.</p>
       ) : (

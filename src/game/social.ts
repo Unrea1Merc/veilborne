@@ -10,6 +10,8 @@ export type FriendRow = {
   status: "pending" | "accepted" | "blocked";
   incoming: boolean;
   level: number;
+  lat: number | null;
+  lng: number | null;
 };
 
 export type MessageRow = {
@@ -190,7 +192,26 @@ export const listFriends = createServerFn({ method: "GET" })
         status: r.status as FriendRow["status"],
         incoming,
         level: 1,
+        lat: null,
+        lng: null,
       });
+    }
+    const otherIds = [...new Set(friends.map((f) => f.otherId))];
+    if (otherIds.length) {
+      const ph = otherIds.map((_, i) => `$${i + 1}`).join(",");
+      const profs = await sql.query<{ user_id: string; name: string; level: number; lat: number | null; lng: number | null }>(
+        `select user_id, name, level, lat, lng from walker_profiles where user_id in (${ph})`,
+        otherIds,
+      );
+      const byId = new Map(profs.map((p) => [p.user_id, p]));
+      for (const f of friends) {
+        const p = byId.get(f.otherId);
+        if (!p) continue;
+        f.level = p.level;
+        f.name = p.name || f.name;
+        f.lat = p.lat;
+        f.lng = p.lng;
+      }
     }
     const blocked: FriendRow[] = [];
     if (blockedIds.size) {
@@ -201,11 +222,11 @@ export const listFriends = createServerFn({ method: "GET" })
         ids,
       );
       for (const p of profs) {
-        blocked.push({ otherId: p.user_id, name: p.name, status: "blocked", incoming: false, level: p.level });
+        blocked.push({ otherId: p.user_id, name: p.name, status: "blocked", incoming: false, level: p.level, lat: null, lng: null });
       }
       for (const id of ids) {
         if (!blocked.some((b) => b.otherId === id)) {
-          blocked.push({ otherId: id, name: id.replace(/^npc:/, ""), status: "blocked", incoming: false, level: 1 });
+          blocked.push({ otherId: id, name: id.replace(/^npc:/, ""), status: "blocked", incoming: false, level: 1, lat: null, lng: null });
         }
       }
     }

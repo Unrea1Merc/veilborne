@@ -227,6 +227,7 @@ export interface GameStore {
   travelInvite: (code: string) => void;
   travelCity: (id: string) => void;
   travelGuild: () => void;
+  travelFriend: (lat: number, lng: number, name: string) => void;
   requestGps: () => void;
   recenter: () => void;
   setMapStyle: (s: "veil" | "sat") => void;
@@ -1017,6 +1018,18 @@ export const useGame = create<GameStore>()(
         const spot = settlementSpot(city, "hall");
         set({ player: { ...p, lat: spot.lat, lng: spot.lng }, follow: true, panel: null, screen: "world" });
         get().toast(`The Veil folds to the ${p.guild.name} hall.`);
+        refreshEntities(get, set);
+      },
+
+      travelFriend: (lat, lng, name) => {
+        const p = get().player;
+        if (!p) return;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          get().toast(`${name} has no last shore yet.`);
+          return;
+        }
+        set({ player: { ...p, lat, lng }, follow: true, panel: null, screen: "world" });
+        get().toast(`The Veil folds to ${name}.`);
         refreshEntities(get, set);
       },
 

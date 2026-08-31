@@ -32,6 +32,7 @@ export function FriendsPanel() {
   const target = useGame((s) => s.socialTarget);
   const setSocialTarget = useGame((s) => s.setSocialTarget);
   const toast = useGame((s) => s.toast);
+  const travelFriend = useGame((s) => s.travelFriend);
   const [tab, setTab] = useState<Tab>(target ? "mail" : "list");
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [blocked, setBlocked] = useState<FriendRow[]>([]);
@@ -296,6 +297,19 @@ export function FriendsPanel() {
           ) : null}
           {accepted.map((f) => (
             <Row key={f.otherId} name={f.name} meta="friend">
+              <SoftBtn
+                className="px-3"
+                disabled={f.lat == null || f.lng == null}
+                onClick={() => {
+                  if (f.lat == null || f.lng == null) {
+                    toast(`${f.name} has no last shore yet.`);
+                    return;
+                  }
+                  travelFriend(f.lat, f.lng, f.name);
+                }}
+              >
+                Fold
+              </SoftBtn>
               <SoftBtn className="px-3" onClick={() => { setSocialTarget({ id: f.otherId, name: f.name }); setTab("mail"); }}>
                 Mail
               </SoftBtn>
