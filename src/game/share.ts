@@ -2,7 +2,7 @@ export function betaUrl() {
   const env = import.meta.env.VITE_BETA_URL as string | undefined;
   if (env) return env.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
-  return "https://veilborne.vercel.app";
+  return "https://veilborne-psi.vercel.app";
 }
 
 export function betaMessage() {

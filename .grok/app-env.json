@@ -1,5 +1,6 @@
 {
   "deploy": {
     "database": true
-  }
+  },
+  "VITE_BETA_URL": "https://veilborne-psi.vercel.app"
 }
