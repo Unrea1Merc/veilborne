@@ -87,15 +87,17 @@ export function rememberTown(city: City) {
   discoveredTowns.set(city.id, city);
 }
 
-export function hamletFromBlock(bi: number, bj: number): City | null {
+export function hamletFromBlock(bi: number, bj: number, force = false): City | null {
   const rng = mulberry32(hashStr(`vb-hamlet:${bi}:${bj}`));
-  if (rng() < 0.36) return null;
+  if (!force && rng() < 0.36) return null;
   const { lat, lng } = cellCenter(`${bi * HAMLET_BLOCK + 2}_${bj * HAMLET_BLOCK + 2}`);
-  for (const c of CITIES) {
-    if (haversine(lat, lng, c.lat, c.lng) < 2200) return null;
-  }
-  for (const c of discoveredTowns.values()) {
-    if (haversine(lat, lng, c.lat, c.lng) < 1400) return null;
+  if (!force) {
+    for (const c of CITIES) {
+      if (haversine(lat, lng, c.lat, c.lng) < 2200) return null;
+    }
+    for (const c of discoveredTowns.values()) {
+      if (haversine(lat, lng, c.lat, c.lng) < 1400) return null;
+    }
   }
   const name = HAMLET_NAMES[Math.floor(rng() * HAMLET_NAMES.length)]!;
   return {
@@ -129,6 +131,11 @@ export function nearbySettlements(lat: number, lng: number): City[] {
       const h = hamletFromBlock(bi + di, bj + dj);
       if (h && !out.some((c) => c.id === h.id)) out.push(h);
     }
+  }
+  const nearestM = out.reduce((best, c) => Math.min(best, haversine(lat, lng, c.lat, c.lng)), Infinity);
+  if (nearestM > 1200) {
+    const forced = hamletFromBlock(bi, bj, true);
+    if (forced && !out.some((c) => c.id === forced.id)) out.push(forced);
   }
   return out;
 }
