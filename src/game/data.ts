@@ -8,9 +8,10 @@ export const GAME_TITLE = "Veilborne";
 export const GAME_TAG = "The Hidden Kingdoms";
 
 export const CELL = 0.0024;
-export const CITY_RADIUS_M = 9000;
-export const TOWN_RADIUS_M = 2400;
-export const HAMLET_RADIUS_M = 520;
+export const CITY_RADIUS_M = 4000;
+export const TOWN_RADIUS_M = 1000;
+export const HAMLET_RADIUS_M = 400;
+export const GUILD_GROW_M = 350;
 export const INTERACT_M = 42;
 export const SHARD_GOAL = 5;
 export const START_LAT = 35.2271;

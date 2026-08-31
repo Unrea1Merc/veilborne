@@ -1,4 +1,4 @@
-import { CELL, CITIES, CITY_RADIUS_M, HAMLET_NAMES, HAMLET_RADIUS_M, MONSTERS, TOWN_RADIUS_M, WANDER_NAMES } from "./data";
+import { CELL, CITIES, CITY_RADIUS_M, GUILD_GROW_M, HAMLET_NAMES, HAMLET_RADIUS_M, MONSTERS, TOWN_RADIUS_M, WANDER_NAMES } from "./data";
 import type { City, Dir, MonsterDef, WorldEntity } from "./types";
 
 export function hashStr(s: string) {
@@ -54,10 +54,29 @@ export function nearestCity(lat: number, lng: number): { city: City; meters: num
   return { city: best, meters: bestD };
 }
 
+const guildHalls = new Map<string, number>();
+
+export function setGuildHalls(counts: Record<string, number>) {
+  guildHalls.clear();
+  for (const [id, n] of Object.entries(counts)) {
+    if (n > 0) guildHalls.set(id, n);
+  }
+}
+
+export function bumpGuildHall(cityId: string) {
+  guildHalls.set(cityId, (guildHalls.get(cityId) ?? 0) + 1);
+}
+
 export function settlementRadius(city: City) {
-  if (city.size === "hamlet" || city.id.startsWith("h")) return HAMLET_RADIUS_M;
-  if (city.size === "town") return TOWN_RADIUS_M;
-  return CITY_RADIUS_M;
+  const base =
+    city.size === "hamlet" || city.id.startsWith("h")
+      ? HAMLET_RADIUS_M
+      : city.size === "town"
+        ? TOWN_RADIUS_M
+        : CITY_RADIUS_M;
+  const halls = guildHalls.get(city.id) ?? 0;
+  const cap = city.size === "city" ? 2000 : city.size === "town" ? 1200 : 500;
+  return base + Math.min(cap, halls * GUILD_GROW_M);
 }
 
 /** Streets, squares, and city limits — no wild spawns inside. */
@@ -67,7 +86,7 @@ export function townSafeRadius(city: City) {
 
 export function inTownSafe(lat: number, lng: number, settlements = nearbySettlements(lat, lng)) {
   for (const city of settlements) {
-    if (haversine(lat, lng, city.lat, city.lng) <= townSafeRadius(city) + 500) return city;
+    if (haversine(lat, lng, city.lat, city.lng) <= townSafeRadius(city) + 120) return city;
   }
   return null;
 }

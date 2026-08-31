@@ -3,6 +3,8 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useGame } from "@/game/store";
 import { clearWalkerSave, loadWalkerSave, pushWalkerSave, type CloudSave } from "@/game/saves";
 import { upsertProfile } from "@/game/social";
+import { listGuildCounts } from "@/game/guilds";
+import { setGuildHalls } from "@/game/world";
 import type { Player } from "@/game/types";
 
 function snapshot(): CloudSave {
@@ -64,6 +66,20 @@ async function mergeFromCloud() {
 export function CloudSync() {
   const { user, isPending } = useCurrentUserState();
   const merged = useRef<string | null>(null);
+
+  useEffect(() => {
+    const load = () => {
+      void listGuildCounts()
+        .then((counts) => {
+          setGuildHalls(counts);
+          useGame.getState().resyncWorld();
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (isPending) return;

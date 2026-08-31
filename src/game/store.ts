@@ -58,6 +58,7 @@ import {
   rememberTown,
   settlementById,
   settlementSpot,
+  bumpGuildHall,
   yawFromVector,
 } from "./world";
 
@@ -244,6 +245,7 @@ export interface GameStore {
     mapStyle?: "veil" | "sat";
   }) => void;
   getInvite: () => string;
+  resyncWorld: () => void;
 }
 
 function refreshEntities(get: () => GameStore, set: (p: Partial<GameStore>) => void) {
@@ -838,6 +840,7 @@ export const useGame = create<GameStore>()(
           panel: "guild",
         });
         get().toast(`The ${name.trim() || "company"} hall rises in ${city.name}.`);
+        bumpGuildHall(city.id);
         refreshEntities(get, set);
         bindTown(get, set, city);
       },
@@ -1210,6 +1213,10 @@ export const useGame = create<GameStore>()(
         const p = get().player;
         if (!p) return "";
         return encodeInvite(p.lat, p.lng);
+      },
+
+      resyncWorld: () => {
+        refreshEntities(get, set);
       },
     }),
     {

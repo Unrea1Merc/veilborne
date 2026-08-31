@@ -232,3 +232,13 @@ export const leaveGuildCloud = createServerFn({ method: "POST" })
     }
     return { left: true };
   });
+
+export const listGuildCounts = createServerFn({ method: "GET" }).handler(async (): Promise<Record<string, number>> => {
+  const sql = await getSql();
+  const rows = await sql.query<{ city_id: string; n: string | number }>(
+    "select city_id, count(*) as n from guilds group by city_id",
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.city_id] = Number(r.n) || 0;
+  return out;
+});

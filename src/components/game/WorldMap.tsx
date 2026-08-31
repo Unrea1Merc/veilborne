@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Dir, WorldEntity } from "@/game/types";
 import { useGame } from "@/game/store";
 import { CLOAKS } from "@/game/data";
+import { inMappedTown, nearestCity, settlementRadius } from "@/game/world";
 import { playerFrame } from "./widgets";
 
 export interface Ghost {
@@ -35,6 +36,7 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
   const playerMark = useRef<import("leaflet").Marker | null>(null);
   const entityMarks = useRef(new Map<string, import("leaflet").Marker>());
   const ghostMarks = useRef(new Map<string, import("leaflet").Marker>());
+  const ringRef = useRef<import("leaflet").Circle | null>(null);
   const Lref = useRef<typeof import("leaflet") | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -86,6 +88,7 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
       playerMark.current = null;
       entityMarks.current.clear();
       ghostMarks.current.clear();
+      ringRef.current = null;
     };
     // mount once
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,6 +147,34 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
       }
     }
   }, [lat, lng, dir, frame, cloak, follow, ready]);
+
+  useEffect(() => {
+    const L = Lref.current;
+    const map = mapRef.current;
+    if (!L || !map || !ready) return;
+    const here = inMappedTown(lat, lng) ?? nearestCity(lat, lng);
+    const show = here.meters <= settlementRadius(here.city) * 1.35;
+    if (!show) {
+      ringRef.current?.remove();
+      ringRef.current = null;
+      return;
+    }
+    const r = settlementRadius(here.city);
+    if (!ringRef.current) {
+      ringRef.current = L.circle([here.city.lat, here.city.lng], {
+        radius: r,
+        color: "#c9a44a",
+        weight: 2,
+        opacity: 0.55,
+        fillColor: "#c9a44a",
+        fillOpacity: 0.04,
+        interactive: false,
+      }).addTo(map);
+    } else {
+      ringRef.current.setLatLng([here.city.lat, here.city.lng]);
+      ringRef.current.setRadius(r);
+    }
+  }, [lat, lng, ready]);
 
   useEffect(() => {
     const L = Lref.current;
