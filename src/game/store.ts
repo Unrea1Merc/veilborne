@@ -52,10 +52,12 @@ import {
   encodeInvite,
   gatherEntities,
   haversine,
+  inTownSafe,
   metersToDeg,
   nearestCity,
   rememberTown,
   settlementById,
+  settlementSpot,
   yawFromVector,
 } from "./world";
 
@@ -147,6 +149,7 @@ function makePlayer(
     guild: null,
     shards: 0,
     discovered: [],
+    boundTowns: [],
   };
   const p = applyLevelStats(raw);
   return { ...p, hp: p.maxHp, mana: p.maxMana };
@@ -222,6 +225,7 @@ export interface GameStore {
   leaveGuild: () => void;
   travelInvite: (code: string) => void;
   travelCity: (id: string) => void;
+  travelGuild: () => void;
   requestGps: () => void;
   recenter: () => void;
   setMapStyle: (s: "veil" | "sat") => void;
@@ -254,11 +258,29 @@ function refreshEntities(get: () => GameStore, set: (p: Partial<GameStore>) => v
   set({ entities, nearby: near?.entity ?? null });
 }
 
+function bindTown(get: () => GameStore, set: (p: Partial<GameStore>) => void, city?: { id: string; name: string; lat: number; lng: number; size?: "city" | "town" | "hamlet" }) {
+  const p = get().player;
+  if (!p) return;
+  const found = city ?? inTownSafe(p.lat, p.lng);
+  if (!found) return;
+  if (p.discovered.includes(found.id) || (p.boundTowns ?? []).some((t) => t.id === found.id)) return;
+  set({
+    player: {
+      ...p,
+      discovered: [...p.discovered, found.id],
+      boundTowns: [...(p.boundTowns ?? []), found],
+    },
+  });
+  get().toast(`${found.name} is bound. Fast travel from Roads.`);
+}
+
 function discoverPlace(lat: number, lng: number, get: () => GameStore, set: (p: Partial<GameStore>) => void) {
+  bindTown(get, set);
   void lookupTown({ data: { lat, lng } })
     .then((town) => {
       if (!town) return;
       rememberTown(town);
+      bindTown(get, set, town);
       refreshEntities(get, set);
     })
     .catch(() => undefined);
@@ -397,16 +419,14 @@ export const useGame = create<GameStore>()(
         const dir = dirFromVector(north, east);
         const heading = yawFromVector(north, east);
         const frame = (s.frame + dt * 5.5) % 4;
-        const discovered = s.player.discovered.includes(`${lat.toFixed(3)}`)
-          ? s.player.discovered
-          : s.player.discovered;
         set({
-          player: { ...s.player, lat, lng, dir, heading, discovered },
+          player: { ...s.player, lat, lng, dir, heading },
           frame,
           follow: true,
         });
         if (Math.random() < 0.02) sfx.step();
         refreshEntities(get, set);
+        bindTown(get, set);
       },
 
       interact: (entity) => {
@@ -455,10 +475,18 @@ export const useGame = create<GameStore>()(
           return;
         }
         if (target.kind === "shop" || target.kind === "city") {
+          if (target.cityId) {
+            const town = settlementById(target.cityId);
+            if (town) bindTown(get, set, town);
+          }
           set({ panel: "store" });
           return;
         }
         if (target.kind === "guild") {
+          if (target.cityId) {
+            const town = settlementById(target.cityId);
+            if (town) bindTown(get, set, town);
+          }
           set({ panel: "guild" });
           return;
         }
@@ -809,6 +837,7 @@ export const useGame = create<GameStore>()(
         });
         get().toast(`The ${name.trim() || "company"} hall rises in ${city.name}.`);
         refreshEntities(get, set);
+        bindTown(get, set, city);
       },
 
       joinGuild: (code) => {
@@ -939,11 +968,30 @@ export const useGame = create<GameStore>()(
       },
 
       travelCity: (id) => {
-        const city = settlementById(id);
+        const city = settlementById(id) ?? get().player?.boundTowns?.find((t) => t.id === id);
         const p = get().player;
         if (!p || !city) return;
-        set({ player: { ...p, lat: city.lat, lng: city.lng }, follow: true, panel: null, screen: "world" });
-        get().toast(`You take the guild road to ${city.name}.`);
+        const spot = settlementSpot(city, "stone");
+        set({ player: { ...p, lat: spot.lat, lng: spot.lng }, follow: true, panel: null, screen: "world" });
+        get().toast(`You take the bound road to ${city.name}.`);
+        refreshEntities(get, set);
+      },
+
+      travelGuild: () => {
+        const p = get().player;
+        if (!p?.guild) {
+          get().toast("You have no hall to fold to.");
+          return;
+        }
+        const city =
+          settlementById(p.guild.cityId) ?? p.boundTowns?.find((t) => t.id === p.guild?.cityId);
+        if (!city) {
+          get().toast("The hall stone is not bound yet. Walk there once.");
+          return;
+        }
+        const spot = settlementSpot(city, "hall");
+        set({ player: { ...p, lat: spot.lat, lng: spot.lng }, follow: true, panel: null, screen: "world" });
+        get().toast(`The Veil folds to the ${p.guild.name} hall.`);
         refreshEntities(get, set);
       },
 
@@ -1097,7 +1145,12 @@ export const useGame = create<GameStore>()(
 
       applySave: (data) => {
         const player = data.player
-          ? { ...data.player, guild: normalizeGuild(data.player.guild) }
+          ? {
+              ...data.player,
+              guild: normalizeGuild(data.player.guild),
+              boundTowns: data.player.boundTowns ?? [],
+              discovered: data.player.discovered ?? [],
+            }
           : null;
         set({
           player,
@@ -1134,7 +1187,14 @@ export const useGame = create<GameStore>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<GameStore> | undefined;
-        const player = p?.player ? { ...p.player, guild: normalizeGuild(p.player.guild) } : p?.player ?? current.player;
+        const player = p?.player
+          ? {
+              ...p.player,
+              guild: normalizeGuild(p.player.guild),
+              boundTowns: p.player.boundTowns ?? [],
+              discovered: p.player.discovered ?? [],
+            }
+          : (p?.player ?? current.player);
         return {
           ...current,
           ...p,

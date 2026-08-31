@@ -143,6 +143,7 @@ export interface Player {
   guild: GuildState | null;
   shards: number;
   discovered: string[];
+  boundTowns: City[];
 }
 
 export interface WorldEntity {

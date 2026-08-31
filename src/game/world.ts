@@ -168,6 +168,12 @@ function offsetMeters(lat: number, lng: number, north: number, east: number) {
   return { lat: lat + dLat, lng: lng + dLng };
 }
 
+export function settlementSpot(city: City, kind: "stone" | "shop" | "hall") {
+  if (kind === "shop") return offsetMeters(city.lat, city.lng, 18, 92);
+  if (kind === "hall") return offsetMeters(city.lat, city.lng, 78, -64);
+  return offsetMeters(city.lat, city.lng, -22, -8);
+}
+
 export function dirFromVector(north: number, east: number): Dir {
   if (Math.abs(north) >= Math.abs(east)) return north >= 0 ? "up" : "down";
   return east >= 0 ? "right" : "left";
@@ -293,9 +299,9 @@ export function gatherEntities(
     if (tooClose(city.lat, city.lng)) return;
     seen.add(city.id);
     placed.push({ lat: city.lat, lng: city.lng });
-    const shopAt = offsetMeters(city.lat, city.lng, 18, 92);
-    const hallAt = offsetMeters(city.lat, city.lng, 78, -64);
-    const stoneAt = offsetMeters(city.lat, city.lng, -22, -8);
+    const shopAt = settlementSpot(city, "shop");
+    const hallAt = settlementSpot(city, "hall");
+    const stoneAt = settlementSpot(city, "stone");
     const shopName = city.size === "hamlet" ? `${city.name} Stall` : `${city.name} Store`;
     const hallName = city.size === "hamlet" ? `${city.name} Hall` : `${city.name} Guild Hall`;
     out.push({
@@ -349,7 +355,7 @@ export function gatherEntities(
   if (guildCityId) {
     const g = settlementById(guildCityId);
     if (g && !out.some((e) => e.id === `guild:${g.id}`)) {
-      const hallAt = offsetMeters(g.lat, g.lng, 78, -64);
+      const hallAt = settlementSpot(g, "hall");
       out.push({
         id: `guild:${g.id}`,
         kind: "guild",

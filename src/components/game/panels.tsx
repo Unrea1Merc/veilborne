@@ -13,7 +13,7 @@ import {
   xpToNext,
 } from "@/game/data";
 import { countItem, equippedBonus } from "@/game/combat";
-import { nearestCity, nearestSettlements, settlementById } from "@/game/world";
+import { nearestCity, settlementById } from "@/game/world";
 import { useGame } from "@/game/store";
 import type { PanelId, Slot } from "@/game/types";
 import { PanelFrame, Pixel, SoftBtn } from "./widgets";
@@ -208,6 +208,7 @@ function GuildPanel() {
   const kickGuildMember = useGame((s) => s.kickGuildMember);
   const setGuildRank = useGame((s) => s.setGuildRank);
   const leaveGuild = useGame((s) => s.leaveGuild);
+  const travelGuild = useGame((s) => s.travelGuild);
   const toast = useGame((s) => s.toast);
   const { user } = useCurrentUserState();
   const [name, setName] = useState("");
@@ -400,6 +401,9 @@ function GuildPanel() {
           </label>
         ) : null}
 
+        <SoftBtn className="w-full" onClick={() => travelGuild()}>
+          Fold to the hall
+        </SoftBtn>
         <SoftBtn
           className="w-full"
           disabled={busy}
@@ -603,15 +607,22 @@ function InvitePanel() {
   const getInvite = useGame((s) => s.getInvite);
   const travelInvite = useGame((s) => s.travelInvite);
   const travelCity = useGame((s) => s.travelCity);
+  const travelGuild = useGame((s) => s.travelGuild);
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [shareLabel, setShareLabel] = useState("Text the beta");
   const mine = player ? getInvite() : "";
   const nearest = player ? nearestCity(player.lat, player.lng) : null;
-  const cities = useMemo(
-    () => (player ? nearestSettlements(player.lat, player.lng, 12) : []),
-    [player],
-  );
+  const bound = useMemo(() => {
+    if (!player) return [];
+    const list = [...(player.boundTowns ?? [])];
+    const seen = new Set<string>();
+    return list.filter((c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  }, [player]);
   if (!player) return null;
   return (
     <div className="space-y-4">
@@ -666,24 +677,31 @@ function InvitePanel() {
       <SoftBtn primary className="w-full" onClick={() => travelInvite(code)}>
         Step through
       </SoftBtn>
-      <p className="text-xs tracking-wide text-muted uppercase">
-        Nearby stones {nearest ? `· ${nearest.city.name}` : ""}
-      </p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {cities.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => travelCity(c.id)}
-            className={cn(
-              "min-h-11 rounded-md px-2 text-left text-sm ring-1 ring-border",
-              nearest?.city.id === c.id ? "bg-accent/20 text-fg" : "bg-raised text-fg",
-            )}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
+      <p className="text-xs tracking-wide text-muted uppercase">Bound roads</p>
+      {player.guild ? (
+        <SoftBtn primary className="w-full" onClick={() => travelGuild()}>
+          Fold to {player.guild.name} hall
+        </SoftBtn>
+      ) : null}
+      {bound.length === 0 ? (
+        <p className="text-sm text-muted">Walk into a town to bind its stone. Then you can fold back anytime.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-1.5">
+          {bound.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => travelCity(c.id)}
+              className={cn(
+                "min-h-11 rounded-md px-2 text-left text-sm ring-1 ring-border",
+                nearest?.city.id === c.id ? "bg-accent/20 text-fg" : "bg-raised text-fg",
+              )}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
