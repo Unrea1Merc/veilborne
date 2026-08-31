@@ -60,6 +60,20 @@ export function settlementRadius(city: City) {
   return CITY_RADIUS_M;
 }
 
+/** Streets and squares — no wild spawns on top of the stone, store, or hall. */
+export function townSafeRadius(city: City) {
+  if (city.size === "hamlet" || city.id.startsWith("h")) return 260;
+  if (city.size === "town") return 520;
+  return 900;
+}
+
+export function inTownSafe(lat: number, lng: number, settlements = nearbySettlements(lat, lng)) {
+  for (const city of settlements) {
+    if (haversine(lat, lng, city.lat, city.lng) <= townSafeRadius(city)) return city;
+  }
+  return null;
+}
+
 export function inMappedTown(lat: number, lng: number) {
   const n = nearestCity(lat, lng);
   return n.meters <= settlementRadius(n.city) ? n : null;
@@ -191,7 +205,7 @@ export function gatherEntities(
   const out: WorldEntity[] = [];
   const ci = Math.floor(lat / CELL);
   const cj = Math.floor(lng / CELL);
-  const urban = Boolean(inMappedTown(lat, lng));
+  const settlements = nearbySettlements(lat, lng);
 
   for (let di = -2; di <= 2; di++) {
     for (let dj = -2; dj <= 2; dj++) {
@@ -201,32 +215,39 @@ export function gatherEntities(
       const jitter = (n: number) => (rng() - 0.5) * CELL * n;
 
       if (rng() < 0.55) {
-        const m = pickMonster(rng, false, urban);
-        const id = `m:${key}`;
-        if (!defeated[id] || now - defeated[id]! > 180_000) {
-          out.push({
-            id,
-            kind: "monster",
-            lat: clat + jitter(0.7),
-            lng: clng + jitter(0.7),
-            name: m.name,
-            sprite: m.sprite,
-            level: 1 + Math.floor(rng() * 4),
-            monsterId: m.id,
-          });
+        const mlat = clat + jitter(0.7);
+        const mlng = clng + jitter(0.7);
+        if (!inTownSafe(mlat, mlng, settlements)) {
+          const m = pickMonster(rng, false, false);
+          const id = `m:${key}`;
+          if (!defeated[id] || now - defeated[id]! > 180_000) {
+            out.push({
+              id,
+              kind: "monster",
+              lat: mlat,
+              lng: mlng,
+              name: m.name,
+              sprite: m.sprite,
+              level: 1 + Math.floor(rng() * 4),
+              monsterId: m.id,
+            });
+          }
         }
       }
 
       if (rng() < 0.16) {
-        const id = `c:${key}`;
-        out.push({
-          id,
-          kind: "cave",
-          lat: clat + jitter(0.5),
-          lng: clng + jitter(0.5),
-          name: "Veil Cave",
-          sprite: "/sprites/props/cave.png",
-        });
+        const clat2 = clat + jitter(0.5);
+        const clng2 = clng + jitter(0.5);
+        if (!inTownSafe(clat2, clng2, settlements)) {
+          out.push({
+            id: `c:${key}`,
+            kind: "cave",
+            lat: clat2,
+            lng: clng2,
+            name: "Veil Cave",
+            sprite: "/sprites/props/cave.png",
+          });
+        }
       }
 
       if (rng() < 0.1) {
@@ -306,7 +327,7 @@ export function gatherEntities(
     });
   };
 
-  const queue = nearbySettlements(lat, lng).slice();
+  const queue = settlements.slice();
   if (town && !queue.some((c) => c.id === town.city.id)) queue.unshift(town.city);
   queue.sort((a, b) => {
     const rank = (c: City) => (c.size === "city" ? 0 : c.size === "town" ? 1 : 2);
