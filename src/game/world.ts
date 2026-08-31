@@ -60,16 +60,14 @@ export function settlementRadius(city: City) {
   return CITY_RADIUS_M;
 }
 
-/** Streets and squares — no wild spawns on top of the stone, store, or hall. */
+/** Streets, squares, and city limits — no wild spawns inside. */
 export function townSafeRadius(city: City) {
-  if (city.size === "hamlet" || city.id.startsWith("h")) return 260;
-  if (city.size === "town") return 520;
-  return 900;
+  return settlementRadius(city);
 }
 
 export function inTownSafe(lat: number, lng: number, settlements = nearbySettlements(lat, lng)) {
   for (const city of settlements) {
-    if (haversine(lat, lng, city.lat, city.lng) <= townSafeRadius(city)) return city;
+    if (haversine(lat, lng, city.lat, city.lng) <= townSafeRadius(city) + 500) return city;
   }
   return null;
 }
@@ -84,6 +82,12 @@ const discoveredTowns = new Map<string, City>();
 
 export function rememberTown(city: City) {
   if (!city.id || !city.name) return;
+  for (const c of CITIES) {
+    if (haversine(city.lat, city.lng, c.lat, c.lng) < 1500) return;
+  }
+  for (const c of discoveredTowns.values()) {
+    if (c.id !== city.id && haversine(city.lat, city.lng, c.lat, c.lng) < 900) return;
+  }
   discoveredTowns.set(city.id, city);
 }
 
@@ -93,10 +97,14 @@ export function hamletFromBlock(bi: number, bj: number, force = false): City | n
   const { lat, lng } = cellCenter(`${bi * HAMLET_BLOCK + 2}_${bj * HAMLET_BLOCK + 2}`);
   if (!force) {
     for (const c of CITIES) {
-      if (haversine(lat, lng, c.lat, c.lng) < 2200) return null;
+      if (haversine(lat, lng, c.lat, c.lng) < settlementRadius(c) + 600) return null;
     }
     for (const c of discoveredTowns.values()) {
-      if (haversine(lat, lng, c.lat, c.lng) < 1400) return null;
+      if (haversine(lat, lng, c.lat, c.lng) < settlementRadius(c) + 400) return null;
+    }
+  } else {
+    for (const c of CITIES) {
+      if (haversine(lat, lng, c.lat, c.lng) < settlementRadius(c) + 200) return null;
     }
   }
   const name = HAMLET_NAMES[Math.floor(rng() * HAMLET_NAMES.length)]!;
@@ -133,7 +141,8 @@ export function nearbySettlements(lat: number, lng: number): City[] {
     }
   }
   const nearestM = out.reduce((best, c) => Math.min(best, haversine(lat, lng, c.lat, c.lng)), Infinity);
-  if (nearestM > 1200) {
+  const inside = out.some((c) => haversine(lat, lng, c.lat, c.lng) <= settlementRadius(c) + 400);
+  if (!inside && nearestM > 900) {
     const forced = hamletFromBlock(bi, bj, true);
     if (forced && !out.some((c) => c.id === forced.id)) out.push(forced);
   }
@@ -176,9 +185,10 @@ function offsetMeters(lat: number, lng: number, north: number, east: number) {
 }
 
 export function settlementSpot(city: City, kind: "stone" | "shop" | "hall") {
-  if (kind === "shop") return offsetMeters(city.lat, city.lng, 18, 92);
-  if (kind === "hall") return offsetMeters(city.lat, city.lng, 78, -64);
-  return offsetMeters(city.lat, city.lng, -22, -8);
+  const scale = city.size === "city" ? 1.25 : city.size === "town" ? 1 : 0.75;
+  if (kind === "shop") return offsetMeters(city.lat, city.lng, 40 * scale, 420 * scale);
+  if (kind === "hall") return offsetMeters(city.lat, city.lng, 380 * scale, -260 * scale);
+  return offsetMeters(city.lat, city.lng, -120 * scale, -30 * scale);
 }
 
 export function dirFromVector(north: number, east: number): Dir {
@@ -297,12 +307,13 @@ export function gatherEntities(
   const seen = new Set<string>();
   const placed: Array<{ lat: number; lng: number }> = [];
   const tooClose = (clat: number, clng: number) =>
-    placed.some((p) => haversine(clat, clng, p.lat, p.lng) < 480);
+    placed.some((p) => haversine(clat, clng, p.lat, p.lng) < 1500);
 
   const placeSettlement = (city: City) => {
     if (seen.has(city.id)) return;
     const d = haversine(lat, lng, city.lat, city.lng);
-    if (d > Math.max(settlementRadius(city) * 1.6, 900)) return;
+    const vis = city.size === "city" ? 1600 : city.size === "town" ? 900 : 650;
+    if (d > vis) return;
     if (tooClose(city.lat, city.lng)) return;
     seen.add(city.id);
     placed.push({ lat: city.lat, lng: city.lng });
@@ -317,7 +328,7 @@ export function gatherEntities(
       lat: stoneAt.lat,
       lng: stoneAt.lng,
       name: city.name,
-      sprite: "/sprites/props/guild.png",
+      sprite: "/sprites/props/house.png",
       cityId: city.id,
     });
     out.push({

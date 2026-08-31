@@ -164,12 +164,14 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
                 : e.kind === "house"
                   ? "Home"
                   : undefined;
-      const html = markerHtml(e.sprite, e.kind === "monster" ? 44 : 48, undefined, label);
+      const size =
+        e.kind === "monster" ? 44 : e.kind === "wanderer" ? 40 : e.kind === "city" || e.kind === "shop" || e.kind === "guild" || e.kind === "house" ? 36 : 40;
+      const html = markerHtml(e.sprite, size, undefined, label);
       const icon = L.divIcon({
         className: "vb-marker",
         html,
-        iconSize: [48, 64],
-        iconAnchor: [24, 56],
+        iconSize: [size, size + 14],
+        iconAnchor: [size / 2, size + 6],
       });
       let m = entityMarks.current.get(e.id);
       if (!m) {
