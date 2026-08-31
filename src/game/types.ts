@@ -84,6 +84,7 @@ export interface City {
   name: string;
   lat: number;
   lng: number;
+  size?: "city" | "town" | "hamlet";
 }
 
 export interface Equipment {

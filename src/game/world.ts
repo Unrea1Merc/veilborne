@@ -1,4 +1,4 @@
-import { CELL, CITIES, CITY_RADIUS_M, MONSTERS, WANDER_NAMES } from "./data";
+import { CELL, CITIES, CITY_RADIUS_M, HAMLET_NAMES, HAMLET_RADIUS_M, MONSTERS, TOWN_RADIUS_M, WANDER_NAMES } from "./data";
 import type { City, Dir, MonsterDef, WorldEntity } from "./types";
 
 export function hashStr(s: string) {
@@ -44,7 +44,7 @@ export function haversine(lat1: number, lng1: number, lat2: number, lng2: number
 export function nearestCity(lat: number, lng: number): { city: City; meters: number } {
   let best = CITIES[0]!;
   let bestD = Infinity;
-  for (const c of CITIES) {
+  for (const c of nearbySettlements(lat, lng)) {
     const d = haversine(lat, lng, c.lat, c.lng);
     if (d < bestD) {
       best = c;
@@ -54,9 +54,77 @@ export function nearestCity(lat: number, lng: number): { city: City; meters: num
   return { city: best, meters: bestD };
 }
 
+export function settlementRadius(city: City) {
+  if (city.size === "hamlet" || city.id.startsWith("h")) return HAMLET_RADIUS_M;
+  if (city.size === "town") return TOWN_RADIUS_M;
+  return CITY_RADIUS_M;
+}
+
 export function inMappedTown(lat: number, lng: number) {
   const n = nearestCity(lat, lng);
-  return n.meters <= CITY_RADIUS_M ? n : null;
+  return n.meters <= settlementRadius(n.city) ? n : null;
+}
+
+const HAMLET_BLOCK = 5;
+const discoveredTowns = new Map<string, City>();
+
+export function rememberTown(city: City) {
+  if (!city.id || !city.name) return;
+  discoveredTowns.set(city.id, city);
+}
+
+export function hamletFromBlock(bi: number, bj: number): City | null {
+  const rng = mulberry32(hashStr(`vb-hamlet:${bi}:${bj}`));
+  if (rng() < 0.36) return null;
+  const { lat, lng } = cellCenter(`${bi * HAMLET_BLOCK + 2}_${bj * HAMLET_BLOCK + 2}`);
+  for (const c of CITIES) {
+    if (haversine(lat, lng, c.lat, c.lng) < 2200) return null;
+  }
+  for (const c of discoveredTowns.values()) {
+    if (haversine(lat, lng, c.lat, c.lng) < 1400) return null;
+  }
+  const name = HAMLET_NAMES[Math.floor(rng() * HAMLET_NAMES.length)]!;
+  return {
+    id: `h${bi}x${bj}`,
+    name,
+    lat: lat + (rng() - 0.5) * CELL * 1.4,
+    lng: lng + (rng() - 0.5) * CELL * 1.4,
+    size: "hamlet",
+  };
+}
+
+export function settlementById(id: string): City | undefined {
+  const mapped = CITIES.find((c) => c.id === id);
+  if (mapped) return mapped;
+  const found = discoveredTowns.get(id);
+  if (found) return found;
+  const m = /^h(-?\d+)x(-?\d+)$/.exec(id);
+  if (!m) return undefined;
+  return hamletFromBlock(Number(m[1]), Number(m[2])) ?? undefined;
+}
+
+export function nearbySettlements(lat: number, lng: number): City[] {
+  const out: City[] = [...CITIES];
+  for (const t of discoveredTowns.values()) {
+    if (!out.some((c) => c.id === t.id)) out.push(t);
+  }
+  const bi = Math.floor(Math.floor(lat / CELL) / HAMLET_BLOCK);
+  const bj = Math.floor(Math.floor(lng / CELL) / HAMLET_BLOCK);
+  for (let di = -3; di <= 3; di++) {
+    for (let dj = -3; dj <= 3; dj++) {
+      const h = hamletFromBlock(bi + di, bj + dj);
+      if (h && !out.some((c) => c.id === h.id)) out.push(h);
+    }
+  }
+  return out;
+}
+
+export function nearestSettlements(lat: number, lng: number, limit = 12): City[] {
+  return nearbySettlements(lat, lng)
+    .map((city) => ({ city, meters: haversine(lat, lng, city.lat, city.lng) }))
+    .sort((a, b) => a.meters - b.meters)
+    .slice(0, limit)
+    .map((x) => x.city);
 }
 
 export function encodeInvite(lat: number, lng: number) {
@@ -187,35 +255,45 @@ export function gatherEntities(
   }
 
   const town = inMappedTown(lat, lng);
-  if (town) {
+  const seen = new Set<string>();
+  const placeSettlement = (city: City) => {
+    if (seen.has(city.id)) return;
+    const d = haversine(lat, lng, city.lat, city.lng);
+    if (d > Math.max(settlementRadius(city) * 1.6, 900)) return;
+    seen.add(city.id);
+    const shopName = city.size === "hamlet" ? `${city.name} Stall` : `${city.name} Store`;
+    const hallName = city.size === "hamlet" ? `${city.name} Hall` : "Guild Hall";
     out.push({
-      id: `city:${town.city.id}`,
+      id: `city:${city.id}`,
       kind: "city",
-      lat: town.city.lat,
-      lng: town.city.lng,
-      name: town.city.name,
+      lat: city.lat,
+      lng: city.lng,
+      name: city.name,
       sprite: "/sprites/props/guild.png",
-      cityId: town.city.id,
+      cityId: city.id,
     });
     out.push({
-      id: `shop:${town.city.id}`,
+      id: `shop:${city.id}`,
       kind: "shop",
-      lat: town.city.lat + 0.00035,
-      lng: town.city.lng + 0.0004,
-      name: `${town.city.name} Store`,
+      lat: city.lat + 0.00035,
+      lng: city.lng + 0.0004,
+      name: shopName,
       sprite: "/sprites/props/shop.png",
-      cityId: town.city.id,
+      cityId: city.id,
     });
     out.push({
-      id: `guild:${town.city.id}`,
+      id: `guild:${city.id}`,
       kind: "guild",
-      lat: town.city.lat - 0.00028,
-      lng: town.city.lng - 0.00032,
-      name: "Guild Hall",
+      lat: city.lat - 0.00028,
+      lng: city.lng - 0.00032,
+      name: hallName,
       sprite: "/sprites/props/guild.png",
-      cityId: town.city.id,
+      cityId: city.id,
     });
-  }
+  };
+
+  if (town) placeSettlement(town.city);
+  for (const city of nearbySettlements(lat, lng)) placeSettlement(city);
 
   if (house) {
     out.push({
@@ -229,7 +307,7 @@ export function gatherEntities(
   }
 
   if (guildCityId) {
-    const g = CITIES.find((c) => c.id === guildCityId);
+    const g = settlementById(guildCityId);
     if (g && !out.some((e) => e.id === `guild:${g.id}`)) {
       out.push({
         id: `guild:${g.id}`,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
-import { COMPANY, GAME_TAG, GAME_TITLE } from "@/game/data";
+import { COMPANY, GAME_TITLE } from "@/game/data";
 import { SoftBtn } from "@/components/game/widgets";
 
 export const Route = createFileRoute("/login")({ component: Login });
@@ -67,8 +67,8 @@ function Login() {
         <p className="font-display text-[11px] tracking-[0.28em] text-gold uppercase">{COMPANY}</p>
         <h1 className="mt-2 font-display text-2xl tracking-wide text-fg">{GAME_TITLE}</h1>
         <p className="mt-1 text-sm text-fg">
-          Link Google to carry your walker to another phone. X and email work too. {GAME_TAG} waits
-          on both sides of the Veil.
+          Link Google or email to carry your walker to another phone. If the vault
+          is quiet, play as a guest — your save stays on this device.
         </p>
 
         {!authEnabled ? (

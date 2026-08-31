@@ -4,7 +4,6 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { sfx, unlockAudio } from "./audio";
 import {
   CALLINGS,
-  CITIES,
   ITEMS,
   RECIPES,
   SAVE_KEY,
@@ -19,6 +18,7 @@ import {
   xpToNext,
 } from "./data";
 import { generateDungeon, tryStep } from "./dungeon";
+import { lookupTown } from "./places";
 import {
   addStack,
   countItem,
@@ -51,6 +51,8 @@ import {
   haversine,
   metersToDeg,
   nearestCity,
+  rememberTown,
+  settlementById,
   yawFromVector,
 } from "./world";
 
@@ -242,6 +244,16 @@ function refreshEntities(get: () => GameStore, set: (p: Partial<GameStore>) => v
   set({ entities, nearby: near?.entity ?? null });
 }
 
+function discoverPlace(lat: number, lng: number, get: () => GameStore, set: (p: Partial<GameStore>) => void) {
+  void lookupTown({ data: { lat, lng } })
+    .then((town) => {
+      if (!town) return;
+      rememberTown(town);
+      refreshEntities(get, set);
+    })
+    .catch(() => undefined);
+}
+
 export const useGame = create<GameStore>()(
   persist(
     (set, get) => ({
@@ -297,6 +309,7 @@ export const useGame = create<GameStore>()(
               const p = makePlayer(name, lineage, calling, cloak, pos.coords.latitude, pos.coords.longitude);
               set({ player: p, screen: "world", storyOpen: true, death: false, awakening: false });
               refreshEntities(get, set);
+              discoverPlace(p.lat, p.lng, get, set);
               get().toast(`The Veil thins at ${p.lat.toFixed(3)}, ${p.lng.toFixed(3)}.`);
             },
             () => {
@@ -823,7 +836,7 @@ export const useGame = create<GameStore>()(
       },
 
       travelCity: (id) => {
-        const city = CITIES.find((c) => c.id === id);
+        const city = settlementById(id);
         const p = get().player;
         if (!p || !city) return;
         set({ player: { ...p, lat: city.lat, lng: city.lng }, follow: true, panel: null, screen: "world" });
@@ -847,6 +860,7 @@ export const useGame = create<GameStore>()(
             });
             get().toast("The walking world locks to your feet.");
             refreshEntities(get, set);
+            discoverPlace(pos.coords.latitude, pos.coords.longitude, get, set);
             if (gpsWatch != null) navigator.geolocation.clearWatch(gpsWatch);
             gpsWatch = navigator.geolocation.watchPosition((w) => {
               const cur = get().player;

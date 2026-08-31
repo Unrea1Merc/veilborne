@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   CALLINGS,
-  CITIES,
   COMPANY,
   ITEMS,
   LINEAGES,
@@ -14,7 +13,7 @@ import {
   xpToNext,
 } from "@/game/data";
 import { countItem, equippedBonus } from "@/game/combat";
-import { nearestCity } from "@/game/world";
+import { nearestCity, nearestSettlements, settlementById } from "@/game/world";
 import { useGame } from "@/game/store";
 import type { PanelId, Slot } from "@/game/types";
 import { PanelFrame, Pixel, SoftBtn } from "./widgets";
@@ -193,7 +192,7 @@ function GuildPanel() {
   const [code, setCode] = useState("");
   if (!player) return null;
   if (player.guild) {
-    const city = CITIES.find((c) => c.id === player.guild?.cityId);
+    const city = settlementById(player.guild.cityId);
     return (
       <div className="space-y-3">
         <div>
@@ -383,7 +382,10 @@ function InvitePanel() {
   const [shareLabel, setShareLabel] = useState("Text the beta");
   const mine = player ? getInvite() : "";
   const nearest = player ? nearestCity(player.lat, player.lng) : null;
-  const cities = useMemo(() => CITIES.slice().sort((a, b) => a.name.localeCompare(b.name)), []);
+  const cities = useMemo(
+    () => (player ? nearestSettlements(player.lat, player.lng, 12) : []),
+    [player],
+  );
   if (!player) return null;
   return (
     <div className="space-y-4">
@@ -439,7 +441,7 @@ function InvitePanel() {
         Step through
       </SoftBtn>
       <p className="text-xs tracking-wide text-muted uppercase">
-        Guild roads {nearest ? `· nearest ${nearest.city.name}` : ""}
+        Nearby stones {nearest ? `· ${nearest.city.name}` : ""}
       </p>
       <div className="grid grid-cols-2 gap-1.5">
         {cities.map((c) => (
