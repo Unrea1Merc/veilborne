@@ -6,6 +6,14 @@ import { SoftBtn } from "@/components/game/widgets";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
+function friendlyAuthError(raw: string) {
+  const t = raw.toLowerCase();
+  if (t.includes("invalid origin") || t.includes("forbidden") || t.includes("unable to connect") || t.includes("failed to fetch")) {
+    return "The account vault on this public link is still wiring. Play as a guest — your walker stays on this phone.";
+  }
+  return raw;
+}
+
 function Login() {
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
@@ -20,7 +28,7 @@ function Login() {
     try {
       await signIn(providerId, { callbackURL: "/" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(friendlyAuthError(err instanceof Error ? err.message : "Sign-in failed"));
       setBusy(null);
     }
   }
@@ -46,7 +54,7 @@ function Login() {
       }
       window.location.href = "/";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not sign in");
+      setError(friendlyAuthError(err instanceof Error ? err.message : "Could not sign in"));
       setBusy(null);
     }
   }

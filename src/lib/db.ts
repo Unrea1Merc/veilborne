@@ -112,6 +112,7 @@ async function createPgliteSql(): Promise<Sql> {
   globalRef.__pgliteInstance__ ??= (async () => {
     const { PGlite } = await import("@electric-sql/pglite");
     const pg = new PGlite({
+      dataDir: "memory://",
       parsers: {
         [OID_INT8]: Number,
         [OID_DATE]: identity,
