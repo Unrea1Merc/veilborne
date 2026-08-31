@@ -15,10 +15,11 @@ export interface Ghost {
   cloak: number;
 }
 
-const VEIL_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const VEIL_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}";
 const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const VEIL_ATTR = '&copy; OpenStreetMap &copy; CARTO';
-const SAT_ATTR = "Tiles &copy; Esri";
+const VEIL_ATTR = "Tiles © Esri";
+const SAT_ATTR = "Tiles © Esri";
 
 function markerHtml(src: string, size: number, cloak?: number, label?: string) {
   const hue = cloak != null ? (CLOAKS[cloak]?.hue ?? 0) : 0;
@@ -68,7 +69,10 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
       const tiles = L.tileLayer(mapStyle === "sat" ? SAT_URL : VEIL_URL, {
         attribution: mapStyle === "sat" ? SAT_ATTR : VEIL_ATTR,
         maxZoom: 20,
+        maxNativeZoom: 19,
       }).addTo(map);
+      layerRef.current = tiles;
+      wrap.current.classList.toggle("satellite", mapStyle === "sat");
       layerRef.current = tiles;
       map.on("dragstart", () => setFollow(false));
       const icon = L.divIcon({
@@ -102,6 +106,7 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
     layerRef.current = L.tileLayer(mapStyle === "sat" ? SAT_URL : VEIL_URL, {
       attribution: mapStyle === "sat" ? SAT_ATTR : VEIL_ATTR,
       maxZoom: 20,
+      maxNativeZoom: 19,
     }).addTo(map);
     wrap.current?.classList.toggle("satellite", mapStyle === "sat");
   }, [mapStyle, ready]);
