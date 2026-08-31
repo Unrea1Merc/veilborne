@@ -92,14 +92,66 @@ export const upsertProfile = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    const clash = await sql.query<{ user_id: string }>(
+      "select user_id from walker_profiles where lower(name) = lower($1) and user_id <> $2 limit 1",
+      [data.name, context.userId],
+    );
+    const name = clash[0] ? undefined : data.name;
+    if (name) {
+      await sql.query(
+        `insert into walker_profiles (user_id, name, level, lat, lng, updated_at)
+         values ($1, $2, $3, $4, $5, now())
+         on conflict (user_id) do update set
+           name = excluded.name, level = excluded.level, lat = excluded.lat, lng = excluded.lng, updated_at = now()`,
+        [context.userId, name, data.level, data.lat, data.lng],
+      );
+    } else {
+      await sql.query(
+        `insert into walker_profiles (user_id, name, level, lat, lng, updated_at)
+         values ($1, $2, $3, $4, $5, now())
+         on conflict (user_id) do update set
+           level = excluded.level, lat = excluded.lat, lng = excluded.lng, updated_at = now()`,
+        [context.userId, data.name, data.level, data.lat, data.lng],
+      );
+    }
+    return { ok: true as const, nameTaken: Boolean(clash[0]) };
+  });
+
+export function cleanWalkerName(raw: string) {
+  return raw.trim().replace(/\s+/g, " ").slice(0, 24);
+}
+
+export const nameIsTaken = createServerFn({ method: "GET" })
+  .validator((q: string) => cleanWalkerName(q))
+  .handler(async ({ data: name }): Promise<{ taken: boolean }> => {
+    if (name.length < 2) return { taken: true };
+    const sql = await getSql();
+    const rows = await sql.query<{ user_id: string }>(
+      "select user_id from walker_profiles where lower(name) = lower($1) limit 1",
+      [name],
+    );
+    return { taken: Boolean(rows[0]) };
+  });
+
+export const claimWalkerName = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((q: string) => cleanWalkerName(q))
+  .handler(async ({ context, data: name }): Promise<{ name: string }> => {
+    if (name.length < 2) throw new Error("Pick a longer name.");
+    const sql = await getSql();
+    const clash = await sql.query<{ user_id: string }>(
+      "select user_id from walker_profiles where lower(name) = lower($1) and user_id <> $2 limit 1",
+      [name, context.userId],
+    );
+    if (clash[0]) throw new Error("Another walker already bears that name.");
     await sql.query(
       `insert into walker_profiles (user_id, name, level, lat, lng, updated_at)
-       values ($1, $2, $3, $4, $5, now())
-       on conflict (user_id) do update set
-         name = excluded.name, level = excluded.level, lat = excluded.lat, lng = excluded.lng, updated_at = now()`,
-      [context.userId, data.name, data.level, data.lat, data.lng],
+       values ($1, $2, 1, null, null, now())
+       on conflict (user_id) do update set name = excluded.name, updated_at = now()`,
+      [context.userId, name],
     );
-    return { ok: true as const };
+    await sql.query("update guild_members set name = $2 where user_id = $1", [context.userId, name]);
+    return { name };
   });
 
 export const listFriends = createServerFn({ method: "GET" })

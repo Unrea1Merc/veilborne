@@ -223,6 +223,7 @@ export interface GameStore {
   kickGuildMember: (memberId: string) => void;
   setGuildRank: (memberId: string, rank: GuildRank) => void;
   leaveGuild: () => void;
+  renameWalker: (name: string) => void;
   travelInvite: (code: string) => void;
   travelCity: (id: string) => void;
   travelGuild: () => void;
@@ -952,6 +953,30 @@ export const useGame = create<GameStore>()(
         set({ player: { ...p, guild: null } });
         get().toast("You leave the hall.");
         refreshEntities(get, set);
+      },
+
+      renameWalker: (name) => {
+        const p = get().player;
+        if (!p) return;
+        const next = name.trim().replace(/\s+/g, " ").slice(0, 24);
+        if (next.length < 2) {
+          get().toast("Pick a longer name.");
+          return;
+        }
+        if (next.toLowerCase() === p.name.toLowerCase() && next !== p.name) {
+          // casing-only change
+        } else if (next === p.name) {
+          get().toast("That is already your name.");
+          return;
+        }
+        const guild = p.guild
+          ? {
+              ...p.guild,
+              members: p.guild.members.map((m) => (m.name === p.name ? { ...m, name: next } : m)),
+            }
+          : p.guild;
+        set({ player: { ...p, name: next, guild } });
+        get().toast(`You walk as ${next}.`);
       },
 
       travelInvite: (code) => {

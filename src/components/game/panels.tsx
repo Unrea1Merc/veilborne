@@ -22,6 +22,7 @@ import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { forgetWalkerEverywhere } from "./cloud-sync";
 import { FriendsPanel } from "./friends";
+import { claimWalkerName, nameIsTaken } from "@/game/social";
 import { VAULT_PACKS, formatUsd, packGrantLine, type VaultPack } from "@/game/vault";
 import { buyVaultPack } from "@/game/vault-buy";
 import { shareBeta } from "@/game/share";
@@ -122,11 +123,48 @@ function BagPanel() {
 function HeroPanel() {
   const player = useGame((s) => s.player);
   const unequip = useGame((s) => s.unequip);
+  const renameWalker = useGame((s) => s.renameWalker);
+  const toast = useGame((s) => s.toast);
+  const { user } = useCurrentUserState();
+  const [alias, setAlias] = useState(player?.name ?? "");
+  const [busy, setBusy] = useState(false);
   if (!player) return null;
+  const hero = player;
   const lin = LINEAGES.find((l) => l.id === player.lineage);
   const call = CALLINGS.find((c) => c.id === player.calling);
   const bonus = equippedBonus(player);
   const need = xpToNext(player.level);
+
+  async function saveName() {
+    const next = alias.trim().replace(/\s+/g, " ").slice(0, 24);
+    if (next.length < 2) {
+      toast("Pick a longer name.");
+      return;
+    }
+    if (next.toLowerCase() === hero.name.toLowerCase() && next === hero.name) {
+      toast("That is already your name.");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (user) {
+        const claimed = await claimWalkerName({ data: next });
+        renameWalker(claimed.name);
+      } else {
+        const { taken } = await nameIsTaken({ data: next });
+        if (taken && next.toLowerCase() !== hero.name.toLowerCase()) {
+          toast("Another walker already bears that name.");
+          return;
+        }
+        renameWalker(next);
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "That name will not hold.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -138,6 +176,21 @@ function HeroPanel() {
           XP {player.xp}/{need} · Str {player.strength} · Atk +{bonus.atk} · Def +{bonus.def}
         </p>
       </div>
+      <label className="block text-xs tracking-wide text-muted uppercase">
+        Walker name
+        <div className="mt-1.5 flex gap-2">
+          <input
+            value={alias}
+            onChange={(e) => setAlias(e.target.value)}
+            maxLength={24}
+            className="h-11 min-w-0 flex-1 rounded-md bg-raised px-3 text-base text-fg ring-1 ring-border outline-none"
+          />
+          <SoftBtn disabled={busy} onClick={() => void saveName()}>
+            {busy ? "Checking…" : "Change"}
+          </SoftBtn>
+        </div>
+      </label>
+      <p className="text-xs text-faint">Names are unique. If another walker holds it, pick another.</p>
       <div className="grid grid-cols-1 gap-2">
         {SLOTS.map((slot) => {
           const id = player.equipment[slot];
