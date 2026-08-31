@@ -152,7 +152,19 @@ export function WorldMap({ ghosts }: { ghosts: Ghost[] }) {
     const keep = new Set<string>();
     for (const e of entities) {
       keep.add(e.id);
-      const html = markerHtml(e.sprite, e.kind === "monster" ? 44 : 48, undefined, e.kind === "wanderer" ? e.name : undefined);
+      const label =
+        e.kind === "wanderer"
+          ? e.name
+          : e.kind === "city"
+            ? e.name
+            : e.kind === "shop"
+              ? "Store"
+              : e.kind === "guild"
+                ? "Hall"
+                : e.kind === "house"
+                  ? "Home"
+                  : undefined;
+      const html = markerHtml(e.sprite, e.kind === "monster" ? 44 : 48, undefined, label);
       const icon = L.divIcon({
         className: "vb-marker",
         html,

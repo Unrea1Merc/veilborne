@@ -153,6 +153,7 @@ function Login() {
                 {busy === p.providerId ? "Opening…" : `Continue with ${p.label}`}
               </SoftBtn>
             ))}
+            <p className="text-xs text-faint">If Google stalls after you pick an account, use Create account. Email is the sure path on this beta.</p>
 
             {error ? <p className="text-sm text-hp">{error}</p> : null}
           </div>

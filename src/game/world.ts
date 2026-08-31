@@ -149,6 +149,11 @@ export function metersToDeg(lat: number, northM: number, eastM: number) {
   return { dLat, dLng };
 }
 
+function offsetMeters(lat: number, lng: number, north: number, east: number) {
+  const { dLat, dLng } = metersToDeg(lat, north, east);
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
 export function dirFromVector(north: number, east: number): Dir {
   if (Math.abs(north) >= Math.abs(east)) return north >= 0 ? "up" : "down";
   return east >= 0 ? "right" : "left";
@@ -256,18 +261,27 @@ export function gatherEntities(
 
   const town = inMappedTown(lat, lng);
   const seen = new Set<string>();
+  const placed: Array<{ lat: number; lng: number }> = [];
+  const tooClose = (clat: number, clng: number) =>
+    placed.some((p) => haversine(clat, clng, p.lat, p.lng) < 480);
+
   const placeSettlement = (city: City) => {
     if (seen.has(city.id)) return;
     const d = haversine(lat, lng, city.lat, city.lng);
     if (d > Math.max(settlementRadius(city) * 1.6, 900)) return;
+    if (tooClose(city.lat, city.lng)) return;
     seen.add(city.id);
+    placed.push({ lat: city.lat, lng: city.lng });
+    const shopAt = offsetMeters(city.lat, city.lng, 18, 92);
+    const hallAt = offsetMeters(city.lat, city.lng, 78, -64);
+    const stoneAt = offsetMeters(city.lat, city.lng, -22, -8);
     const shopName = city.size === "hamlet" ? `${city.name} Stall` : `${city.name} Store`;
-    const hallName = city.size === "hamlet" ? `${city.name} Hall` : "Guild Hall";
+    const hallName = city.size === "hamlet" ? `${city.name} Hall` : `${city.name} Guild Hall`;
     out.push({
       id: `city:${city.id}`,
       kind: "city",
-      lat: city.lat,
-      lng: city.lng,
+      lat: stoneAt.lat,
+      lng: stoneAt.lng,
       name: city.name,
       sprite: "/sprites/props/guild.png",
       cityId: city.id,
@@ -275,8 +289,8 @@ export function gatherEntities(
     out.push({
       id: `shop:${city.id}`,
       kind: "shop",
-      lat: city.lat + 0.00035,
-      lng: city.lng + 0.0004,
+      lat: shopAt.lat,
+      lng: shopAt.lng,
       name: shopName,
       sprite: "/sprites/props/shop.png",
       cityId: city.id,
@@ -284,16 +298,21 @@ export function gatherEntities(
     out.push({
       id: `guild:${city.id}`,
       kind: "guild",
-      lat: city.lat - 0.00028,
-      lng: city.lng - 0.00032,
+      lat: hallAt.lat,
+      lng: hallAt.lng,
       name: hallName,
       sprite: "/sprites/props/guild.png",
       cityId: city.id,
     });
   };
 
-  if (town) placeSettlement(town.city);
-  for (const city of nearbySettlements(lat, lng)) placeSettlement(city);
+  const queue = nearbySettlements(lat, lng).slice();
+  if (town && !queue.some((c) => c.id === town.city.id)) queue.unshift(town.city);
+  queue.sort((a, b) => {
+    const rank = (c: City) => (c.size === "city" ? 0 : c.size === "town" ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+  for (const city of queue) placeSettlement(city);
 
   if (house) {
     out.push({
@@ -309,12 +328,13 @@ export function gatherEntities(
   if (guildCityId) {
     const g = settlementById(guildCityId);
     if (g && !out.some((e) => e.id === `guild:${g.id}`)) {
+      const hallAt = offsetMeters(g.lat, g.lng, 78, -64);
       out.push({
         id: `guild:${g.id}`,
         kind: "guild",
-        lat: g.lat,
-        lng: g.lng,
-        name: "Guild Hall",
+        lat: hallAt.lat,
+        lng: hallAt.lng,
+        name: `${g.name} Guild Hall`,
         sprite: "/sprites/props/guild.png",
         cityId: g.id,
       });

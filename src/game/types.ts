@@ -101,11 +101,21 @@ export interface HouseState {
   storage: ItemStack[];
 }
 
+export type GuildRank = "leader" | "officer" | "member";
+
+export interface GuildMember {
+  id: string;
+  name: string;
+  rank: GuildRank;
+}
+
 export interface GuildState {
   name: string;
   code: string;
   cityId: string;
-  members: string[];
+  motd: string;
+  leaderId: string;
+  members: GuildMember[];
 }
 
 export interface Player {

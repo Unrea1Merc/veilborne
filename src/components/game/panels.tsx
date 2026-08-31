@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   CALLINGS,
@@ -25,6 +25,19 @@ import { FriendsPanel } from "./friends";
 import { VAULT_PACKS, formatUsd, packGrantLine, type VaultPack } from "@/game/vault";
 import { buyVaultPack } from "@/game/vault-buy";
 import { shareBeta } from "@/game/share";
+import { canManage, rankLabel, rankOf } from "@/game/guild-model";
+import {
+  addGuildMemberCloud,
+  createGuildCloud,
+  joinGuildCloud,
+  kickGuildMemberCloud,
+  leaveGuildCloud,
+  loadMyGuild,
+  renameGuildCloud,
+  setGuildRankCloud,
+  setMotdCloud,
+} from "@/game/guilds";
+import type { GuildRank, GuildState } from "@/game/types";
 
 const SLOTS: Slot[] = ["weapon", "helm", "armor", "boots", "accessory"];
 
@@ -188,35 +201,225 @@ function GuildPanel() {
   const player = useGame((s) => s.player);
   const createGuild = useGame((s) => s.createGuild);
   const joinGuild = useGame((s) => s.joinGuild);
+  const applyGuild = useGame((s) => s.applyGuild);
+  const renameGuild = useGame((s) => s.renameGuild);
+  const setGuildMotd = useGame((s) => s.setGuildMotd);
+  const addGuildMember = useGame((s) => s.addGuildMember);
+  const kickGuildMember = useGame((s) => s.kickGuildMember);
+  const setGuildRank = useGame((s) => s.setGuildRank);
+  const leaveGuild = useGame((s) => s.leaveGuild);
+  const toast = useGame((s) => s.toast);
+  const { user } = useCurrentUserState();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [rename, setRename] = useState("");
+  const [motd, setMotd] = useState("");
+  const [invite, setInvite] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadMyGuild()
+      .then((g) => {
+        if (g) applyGuild(g);
+      })
+      .catch(() => undefined);
+  }, [user, applyGuild]);
+
   if (!player) return null;
+
+  async function run(fn: () => Promise<GuildState | { left: true } | void>, fallback: () => void) {
+    setBusy(true);
+    try {
+      if (user) {
+        const result = await fn();
+        if (result && "code" in result) applyGuild(result);
+        else if (result && "left" in result) applyGuild(null);
+      } else {
+        fallback();
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "The hall would not answer.");
+      fallback();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (player.guild) {
     const city = settlementById(player.guild.cityId);
+    const rank = rankOf(player.guild, player.name);
+    const leader = rank === "leader";
+    const officer = canManage(rank);
     return (
       <div className="space-y-3">
         <div>
           <h3 className="font-display text-lg text-fg">{player.guild.name}</h3>
-          <p className="text-sm text-muted">Hall in {city?.name ?? "a mapped town"}</p>
+          <p className="text-sm text-muted">
+            Hall in {city?.name ?? "a mapped town"} · {rank ? rankLabel(rank) : "Walker"}
+          </p>
           <p className="mt-1 font-display text-xs tracking-wide text-gold">{player.guild.code}</p>
+          {player.guild.motd ? <p className="mt-2 text-sm text-fg">“{player.guild.motd}”</p> : null}
         </div>
-        <p className="text-sm text-muted">Members</p>
+        <SoftBtn
+          className="w-full"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(player.guild!.code);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1400);
+            } catch {
+              /* ignore */
+            }
+          }}
+        >
+          {copied ? "Code copied" : "Copy guild code"}
+        </SoftBtn>
+
+        {leader ? (
+          <label className="block text-xs tracking-wide text-muted uppercase">
+            Rename company
+            <div className="mt-1.5 flex gap-2">
+              <input
+                value={rename}
+                onChange={(e) => setRename(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-md bg-raised px-3 text-base text-fg ring-1 ring-border outline-none"
+                placeholder={player.guild.name}
+              />
+              <SoftBtn
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    () => renameGuildCloud({ data: { name: rename } }),
+                    () => renameGuild(rename),
+                  )
+                }
+              >
+                Set
+              </SoftBtn>
+            </div>
+          </label>
+        ) : null}
+
+        {officer ? (
+          <label className="block text-xs tracking-wide text-muted uppercase">
+            Hall word
+            <div className="mt-1.5 flex gap-2">
+              <input
+                value={motd}
+                onChange={(e) => setMotd(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-md bg-raised px-3 text-base text-fg ring-1 ring-border outline-none"
+                placeholder="Walk together."
+              />
+              <SoftBtn
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    () => setMotdCloud({ data: { motd } }),
+                    () => setGuildMotd(motd),
+                  )
+                }
+              >
+                Post
+              </SoftBtn>
+            </div>
+          </label>
+        ) : null}
+
+        <p className="text-sm text-muted">Members · {player.guild.members.length}</p>
         <ul className="space-y-1">
           {player.guild.members.map((m) => (
-            <li key={m} className="rounded-md bg-raised px-3 py-2 text-sm ring-1 ring-border">
-              {m}
+            <li key={m.id} className="flex items-center gap-2 rounded-md bg-raised px-3 py-2 ring-1 ring-border">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-fg">{m.name}</p>
+                <p className="text-[11px] tracking-wide text-gold uppercase">{rankLabel(m.rank)}</p>
+              </div>
+              {leader && m.rank !== "leader" ? (
+                <button
+                  type="button"
+                  className="min-h-11 text-xs text-muted"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        setGuildRankCloud({
+                          data: { memberId: m.id, rank: m.rank === "officer" ? "member" : "officer" },
+                        }),
+                      () => setGuildRank(m.id, m.rank === "officer" ? "member" : "officer"),
+                    )
+                  }
+                >
+                  {m.rank === "officer" ? "Demote" : "Officer"}
+                </button>
+              ) : null}
+              {officer && m.rank !== "leader" && m.name !== player.name ? (
+                <button
+                  type="button"
+                  className="min-h-11 text-xs text-hp"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => kickGuildMemberCloud({ data: { memberId: m.id } }),
+                      () => kickGuildMember(m.id),
+                    )
+                  }
+                >
+                  Kick
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
-        <p className="text-xs text-faint">
-          Share the guild code. Halls and stores rise in mapped cities. Guild recipes unlock in the forge.
-        </p>
+
+        {officer ? (
+          <label className="block text-xs tracking-wide text-muted uppercase">
+            Add walker
+            <div className="mt-1.5 flex gap-2">
+              <input
+                value={invite}
+                onChange={(e) => setInvite(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-md bg-raised px-3 text-base text-fg ring-1 ring-border outline-none"
+                placeholder="Name"
+              />
+              <SoftBtn
+                disabled={busy}
+                onClick={() => {
+                  const n = invite.trim();
+                  if (!n) return;
+                  void run(
+                    () => addGuildMemberCloud({ data: { name: n } }),
+                    () => addGuildMember(n),
+                  );
+                  setInvite("");
+                }}
+              >
+                Add
+              </SoftBtn>
+            </div>
+          </label>
+        ) : null}
+
+        <SoftBtn
+          className="w-full"
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () => leaveGuildCloud(),
+              () => leaveGuild(),
+            )
+          }
+        >
+          Leave the hall
+        </SoftBtn>
+        <p className="text-xs text-faint">Leaders rename and grant officers. Officers add and kick walkers. Share the code so friends can swear in.</p>
       </div>
     );
   }
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Raise a company in the nearest mapped town, or swear in with a code.</p>
+      <p className="text-sm text-muted">Raise a company in this town, or swear in with a guild code.</p>
       <label className="block text-xs tracking-wide text-muted uppercase">
         Company name
         <input
@@ -226,7 +429,21 @@ function GuildPanel() {
           placeholder="Ashwalkers"
         />
       </label>
-      <SoftBtn primary className="w-full" onClick={() => createGuild(name)}>
+      <SoftBtn
+        primary
+        className="w-full"
+        disabled={busy}
+        onClick={() => {
+          const city = nearestCity(player.lat, player.lng).city;
+          void run(
+            () =>
+              createGuildCloud({
+                data: { name: name || "Ashwalkers", cityId: city.id, walkerName: player.name },
+              }),
+            () => createGuild(name),
+          );
+        }}
+      >
         Raise a hall
       </SoftBtn>
       <label className="block text-xs tracking-wide text-muted uppercase">
@@ -238,7 +455,16 @@ function GuildPanel() {
           placeholder="GL-XXXXX"
         />
       </label>
-      <SoftBtn className="w-full" onClick={() => joinGuild(code)}>
+      <SoftBtn
+        className="w-full"
+        disabled={busy}
+        onClick={() =>
+          void run(
+            () => joinGuildCloud({ data: { code, walkerName: player.name } }),
+            () => joinGuild(code),
+          )
+        }
+      >
         Swear in
       </SoftBtn>
     </div>

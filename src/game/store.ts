@@ -19,6 +19,7 @@ import {
 } from "./data";
 import { generateDungeon, tryStep } from "./dungeon";
 import { lookupTown } from "./places";
+import { memberIdFromName, normalizeGuild } from "./guild-model";
 import {
   addStack,
   countItem,
@@ -35,6 +36,8 @@ import type {
   CombatState,
   Dir,
   DungeonState,
+  GuildRank,
+  GuildState,
   LineageId,
   PanelId,
   Player,
@@ -210,6 +213,13 @@ export interface GameStore {
   rest: () => void;
   createGuild: (name: string) => void;
   joinGuild: (code: string) => void;
+  applyGuild: (guild: GuildState | null) => void;
+  renameGuild: (name: string) => void;
+  setGuildMotd: (motd: string) => void;
+  addGuildMember: (name: string) => void;
+  kickGuildMember: (memberId: string) => void;
+  setGuildRank: (memberId: string, rank: GuildRank) => void;
+  leaveGuild: () => void;
   travelInvite: (code: string) => void;
   travelCity: (id: string) => void;
   requestGps: () => void;
@@ -782,6 +792,7 @@ export const useGame = create<GameStore>()(
         if (!p) return;
         const city = nearestCity(p.lat, p.lng).city;
         const code = `GL-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+        const me = { id: memberIdFromName(p.name), name: p.name, rank: "leader" as const };
         set({
           player: {
             ...p,
@@ -789,12 +800,14 @@ export const useGame = create<GameStore>()(
               name: name.trim().slice(0, 22) || "Unnamed Company",
               code,
               cityId: city.id,
-              members: [p.name, "Sera Vale", "Brann Oak"],
+              motd: "Walk together. Hold the Veil.",
+              leaderId: me.id,
+              members: [me],
             },
           },
           panel: "guild",
         });
-        get().toast(`The ${name} hall rises in ${city.name}.`);
+        get().toast(`The ${name.trim() || "company"} hall rises in ${city.name}.`);
         refreshEntities(get, set);
       },
 
@@ -807,6 +820,7 @@ export const useGame = create<GameStore>()(
           return;
         }
         const city = nearestCity(p.lat, p.lng).city;
+        const me = { id: memberIdFromName(p.name), name: p.name, rank: "member" as const };
         set({
           player: {
             ...p,
@@ -814,11 +828,100 @@ export const useGame = create<GameStore>()(
               name: "Fellow Walkers",
               code: clean,
               cityId: city.id,
-              members: [p.name, "Lysa Thorn", "Calder Rune", "Mirin Ash"],
+              motd: "",
+              leaderId: "",
+              members: [me],
             },
           },
         });
         get().toast(`You are sworn in. Hall in ${city.name}.`);
+        refreshEntities(get, set);
+      },
+
+      applyGuild: (guild) => {
+        const p = get().player;
+        if (!p) return;
+        const next = guild ? normalizeGuild(guild) : null;
+        set({ player: { ...p, guild: next } });
+        refreshEntities(get, set);
+      },
+
+      renameGuild: (name) => {
+        const p = get().player;
+        if (!p?.guild) return;
+        const next = name.trim().slice(0, 22);
+        if (!next) return;
+        set({ player: { ...p, guild: { ...p.guild, name: next } } });
+        get().toast(`The company is now ${next}.`);
+      },
+
+      setGuildMotd: (motd) => {
+        const p = get().player;
+        if (!p?.guild) return;
+        set({ player: { ...p, guild: { ...p.guild, motd: motd.trim().slice(0, 140) } } });
+        get().toast("The hall word is set.");
+      },
+
+      addGuildMember: (name) => {
+        const p = get().player;
+        if (!p?.guild) return;
+        const display = name.trim().slice(0, 24);
+        if (!display) return;
+        const id = memberIdFromName(display);
+        if (p.guild.members.some((m) => m.id === id || m.name.toLowerCase() === display.toLowerCase())) {
+          get().toast("They already walk this hall.");
+          return;
+        }
+        set({
+          player: {
+            ...p,
+            guild: {
+              ...p.guild,
+              members: [...p.guild.members, { id, name: display, rank: "member" }],
+            },
+          },
+        });
+        get().toast(`${display} is sworn in.`);
+      },
+
+      kickGuildMember: (memberId) => {
+        const p = get().player;
+        if (!p?.guild) return;
+        const target = p.guild.members.find((m) => m.id === memberId);
+        if (!target) return;
+        if (target.rank === "leader") {
+          get().toast("The leader cannot be turned out.");
+          return;
+        }
+        set({
+          player: {
+            ...p,
+            guild: { ...p.guild, members: p.guild.members.filter((m) => m.id !== memberId) },
+          },
+        });
+        get().toast(`${target.name} is turned out.`);
+      },
+
+      setGuildRank: (memberId, rank) => {
+        const p = get().player;
+        if (!p?.guild) return;
+        set({
+          player: {
+            ...p,
+            guild: {
+              ...p.guild,
+              members: p.guild.members.map((m) => (m.id === memberId ? { ...m, rank } : m)),
+            },
+          },
+        });
+        get().toast(rank === "officer" ? "An officer is named." : "Rank set to walker.");
+      },
+
+      leaveGuild: () => {
+        const p = get().player;
+        if (!p?.guild) return;
+        set({ player: { ...p, guild: null } });
+        get().toast("You leave the hall.");
         refreshEntities(get, set);
       },
 
@@ -993,8 +1096,11 @@ export const useGame = create<GameStore>()(
       },
 
       applySave: (data) => {
+        const player = data.player
+          ? { ...data.player, guild: normalizeGuild(data.player.guild) }
+          : null;
         set({
-          player: data.player,
+          player,
           defeated: data.defeated ?? {},
           mapStyle: data.mapStyle ?? get().mapStyle,
           screen: "title",
@@ -1028,9 +1134,11 @@ export const useGame = create<GameStore>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<GameStore> | undefined;
+        const player = p?.player ? { ...p.player, guild: normalizeGuild(p.player.guild) } : p?.player ?? current.player;
         return {
           ...current,
           ...p,
+          player,
           screen: "title" as const,
           panel: null,
           combat: null,
